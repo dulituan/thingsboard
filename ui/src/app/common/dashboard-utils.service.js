@@ -155,6 +155,10 @@ function DashboardUtils(types, utils, timeService) {
                 delete datasource.deviceAliasId;
             }
         });
+        //TODO: Temp workaround
+        if (widget.isSystemType  && widget.bundleAlias == 'charts' && widget.typeAlias == 'timeseries') {
+            widget.typeAlias = 'basic_timeseries';
+        }
         return widget;
     }
 
@@ -197,18 +201,22 @@ function DashboardUtils(types, utils, timeService) {
                 if (!widget.id) {
                     widget.id = utils.guid();
                 }
-                widgetsMap[widget.id] = validateAndUpdateWidget(widget);
+                widgetsMap[widget.id] = widget;
             });
             dashboard.configuration.widgets = widgetsMap;
         }
+        for (var id in dashboard.configuration.widgets) {
+            var widget = dashboard.configuration.widgets[id];
+            dashboard.configuration.widgets[id] = validateAndUpdateWidget(widget);
+        }
         if (angular.isUndefined(dashboard.configuration.states)) {
             dashboard.configuration.states = {
-                'default': createDefaultState('Default', true)
+                'default': createDefaultState(dashboard.title, true)
             };
 
             var mainLayout = dashboard.configuration.states['default'].layouts['main'];
-            for (var id in dashboard.configuration.widgets) {
-                var widget = dashboard.configuration.widgets[id];
+            for (id in dashboard.configuration.widgets) {
+                widget = dashboard.configuration.widgets[id];
                 mainLayout.widgets[id] = {
                     sizeX: widget.sizeX,
                     sizeY: widget.sizeY,
@@ -272,16 +280,16 @@ function DashboardUtils(types, utils, timeService) {
         }
         if (angular.isUndefined(dashboard.configuration.settings)) {
             dashboard.configuration.settings = {};
-            dashboard.configuration.settings.stateControllerId = 'default';
-            dashboard.configuration.settings.showTitle = true;
+            dashboard.configuration.settings.stateControllerId = 'entity';
+            dashboard.configuration.settings.showTitle = false;
             dashboard.configuration.settings.showDashboardsSelect = true;
             dashboard.configuration.settings.showEntitiesSelect = true;
             dashboard.configuration.settings.showDashboardTimewindow = true;
             dashboard.configuration.settings.showDashboardExport = true;
-            dashboard.configuration.settings.toolbarAlwaysOpen = false;
+            dashboard.configuration.settings.toolbarAlwaysOpen = true;
         } else {
             if (angular.isUndefined(dashboard.configuration.settings.stateControllerId)) {
-                dashboard.configuration.settings.stateControllerId = 'default';
+                dashboard.configuration.settings.stateControllerId = 'entity';
             }
         }
         if (angular.isDefined(dashboard.configuration.gridSettings)) {
@@ -344,9 +352,8 @@ function DashboardUtils(types, utils, timeService) {
 
     function createSingleEntityFilter(entityType, entityId) {
         return {
-            type: types.aliasFilterType.entityList.value,
-            entityList: [entityId],
-            entityType: entityType,
+            type: types.aliasFilterType.singleEntity.value,
+            singleEntity: { entityType: entityType, id: entityId },
             resolveMultiple: false
         };
     }

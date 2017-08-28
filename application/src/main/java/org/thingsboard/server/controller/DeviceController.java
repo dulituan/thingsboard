@@ -21,7 +21,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.thingsboard.server.common.data.Customer;
 import org.thingsboard.server.common.data.Device;
-import org.thingsboard.server.common.data.TenantDeviceType;
+import org.thingsboard.server.common.data.EntitySubtype;
 import org.thingsboard.server.common.data.id.CustomerId;
 import org.thingsboard.server.common.data.id.DeviceId;
 import org.thingsboard.server.common.data.id.TenantId;
@@ -61,7 +61,14 @@ public class DeviceController extends BaseController {
     public Device saveDevice(@RequestBody Device device) throws ThingsboardException {
         try {
             device.setTenantId(getCurrentUser().getTenantId());
-            return checkNotNull(deviceService.saveDevice(device));
+            Device savedDevice = checkNotNull(deviceService.saveDevice(device));
+            actorService
+                    .onDeviceNameOrTypeUpdate(
+                            savedDevice.getTenantId(),
+                            savedDevice.getId(),
+                            savedDevice.getName(),
+                            savedDevice.getType());
+            return savedDevice;
         } catch (Exception e) {
             throw handleException(e);
         }
@@ -174,7 +181,7 @@ public class DeviceController extends BaseController {
         try {
             TenantId tenantId = getCurrentUser().getTenantId();
             TextPageLink pageLink = createPageLink(limit, textSearch, idOffset, textOffset);
-            if (type != null && type.trim().length()>0) {
+            if (type != null && type.trim().length() > 0) {
                 return checkNotNull(deviceService.findDevicesByTenantIdAndType(tenantId, type, pageLink));
             } else {
                 return checkNotNull(deviceService.findDevicesByTenantId(tenantId, pageLink));
@@ -213,7 +220,7 @@ public class DeviceController extends BaseController {
             CustomerId customerId = new CustomerId(toUUID(strCustomerId));
             checkCustomerId(customerId);
             TextPageLink pageLink = createPageLink(limit, textSearch, idOffset, textOffset);
-            if (type != null && type.trim().length()>0) {
+            if (type != null && type.trim().length() > 0) {
                 return checkNotNull(deviceService.findDevicesByTenantIdAndCustomerIdAndType(tenantId, customerId, type, pageLink));
             } else {
                 return checkNotNull(deviceService.findDevicesByTenantIdAndCustomerId(tenantId, customerId, pageLink));
@@ -276,11 +283,11 @@ public class DeviceController extends BaseController {
     @PreAuthorize("hasAnyAuthority('TENANT_ADMIN', 'CUSTOMER_USER')")
     @RequestMapping(value = "/device/types", method = RequestMethod.GET)
     @ResponseBody
-    public List<TenantDeviceType> getDeviceTypes() throws ThingsboardException {
+    public List<EntitySubtype> getDeviceTypes() throws ThingsboardException {
         try {
             SecurityUser user = getCurrentUser();
             TenantId tenantId = user.getTenantId();
-            ListenableFuture<List<TenantDeviceType>> deviceTypes = deviceService.findDeviceTypesByTenantId(tenantId);
+            ListenableFuture<List<EntitySubtype>> deviceTypes = deviceService.findDeviceTypesByTenantId(tenantId);
             return checkNotNull(deviceTypes.get());
         } catch (Exception e) {
             throw handleException(e);

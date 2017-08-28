@@ -34,9 +34,23 @@ export default function EntityAutocomplete($compile, $templateCache, $q, $filter
 
         scope.fetchEntities = function(searchText) {
             var deferred = $q.defer();
-            entityService.getEntitiesByNameFilter(scope.entityType, searchText, 50, null, scope.entitySubtype).then(function success(result) {
+            var limit = 50;
+            if (scope.excludeEntityIds && scope.excludeEntityIds.length) {
+                limit += scope.excludeEntityIds.length;
+            }
+            entityService.getEntitiesByNameFilter(scope.entityType, searchText, limit, null, scope.entitySubtype).then(function success(result) {
                 if (result) {
-                    deferred.resolve(result);
+                    if (scope.excludeEntityIds && scope.excludeEntityIds.length) {
+                        var entities = [];
+                        result.forEach(function(entity) {
+                            if (scope.excludeEntityIds.indexOf(entity.id.id) == -1) {
+                                entities.push(entity);
+                            }
+                        });
+                        deferred.resolve(entities);
+                    } else {
+                        deferred.resolve(result);
+                    }
                 } else {
                     deferred.resolve([]);
                 }
@@ -81,12 +95,16 @@ export default function EntityAutocomplete($compile, $templateCache, $q, $filter
             }
         });
 
-        scope.$watch('entity', function () {
-            scope.updateView();
+        scope.$watch('entity', function (newVal, prevVal) {
+            if (!angular.equals(newVal, prevVal)) {
+                scope.updateView();
+            }
         });
 
-        scope.$watch('disabled', function () {
-            scope.updateView();
+        scope.$watch('disabled', function (newVal, prevVal) {
+            if (!angular.equals(newVal, prevVal)) {
+                scope.updateView();
+            }
         });
 
 
@@ -165,7 +183,8 @@ export default function EntityAutocomplete($compile, $templateCache, $q, $filter
             tbRequired: '=?',
             disabled:'=ngDisabled',
             entityType: '=',
-            entitySubtype: '=?'
+            entitySubtype: '=?',
+            excludeEntityIds: '=?'
         }
     };
 }
