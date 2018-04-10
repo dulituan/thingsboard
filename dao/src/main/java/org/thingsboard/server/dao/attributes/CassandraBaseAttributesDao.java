@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2018 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -109,18 +109,21 @@ public class CassandraBaseAttributesDao extends CassandraAbstractAsyncDao implem
         stmt.setString(3, attribute.getKey());
         stmt.setLong(4, attribute.getLastUpdateTs());
         stmt.setString(5, attribute.getStrValue().orElse(null));
-        if (attribute.getBooleanValue().isPresent()) {
-            stmt.setBool(6, attribute.getBooleanValue().get());
+        Optional<Boolean> booleanValue = attribute.getBooleanValue();
+        if (booleanValue.isPresent()) {
+            stmt.setBool(6, booleanValue.get());
         } else {
             stmt.setToNull(6);
         }
-        if (attribute.getLongValue().isPresent()) {
-            stmt.setLong(7, attribute.getLongValue().get());
+        Optional<Long> longValue = attribute.getLongValue();
+        if (longValue.isPresent()) {
+            stmt.setLong(7, longValue.get());
         } else {
             stmt.setToNull(7);
         }
-        if (attribute.getDoubleValue().isPresent()) {
-            stmt.setDouble(8, attribute.getDoubleValue().get());
+        Optional<Double> doubleValue = attribute.getDoubleValue();
+        if (doubleValue.isPresent()) {
+            stmt.setDouble(8, doubleValue.get());
         } else {
             stmt.setToNull(8);
         }
@@ -144,12 +147,12 @@ public class CassandraBaseAttributesDao extends CassandraAbstractAsyncDao implem
                 .and(eq(ATTRIBUTE_TYPE_COLUMN, attributeType))
                 .and(eq(ATTRIBUTE_KEY_COLUMN, key));
         log.debug("Remove request: {}", delete.toString());
-        return getFuture(getSession().executeAsync(delete), rs -> null);
+        return getFuture(executeAsyncWrite(delete), rs -> null);
     }
 
     private PreparedStatement getSaveStmt() {
         if (saveStmt == null) {
-            saveStmt = getSession().prepare("INSERT INTO " + ModelConstants.ATTRIBUTES_KV_CF +
+            saveStmt = prepare("INSERT INTO " + ModelConstants.ATTRIBUTES_KV_CF +
                     "(" + ENTITY_TYPE_COLUMN +
                     "," + ENTITY_ID_COLUMN +
                     "," + ATTRIBUTE_TYPE_COLUMN +

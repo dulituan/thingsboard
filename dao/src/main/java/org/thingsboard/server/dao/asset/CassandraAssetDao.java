@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2018 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -148,7 +148,7 @@ public class CassandraAssetDao extends CassandraAbstractSearchTextDao<AssetEntit
         query.and(eq(ENTITY_SUBTYPE_TENANT_ID_PROPERTY, tenantId));
         query.and(eq(ENTITY_SUBTYPE_ENTITY_TYPE_PROPERTY, EntityType.ASSET));
         query.setConsistencyLevel(cluster.getDefaultReadConsistencyLevel());
-        ResultSetFuture resultSetFuture = getSession().executeAsync(query);
+        ResultSetFuture resultSetFuture = executeAsyncRead(query);
         return Futures.transform(resultSetFuture, new Function<ResultSet, List<EntitySubtype>>() {
             @Nullable
             @Override

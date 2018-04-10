@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2018 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,10 +40,12 @@ import org.thingsboard.server.controller.plugin.PluginWebSocketMsgEndpoint;
 import org.thingsboard.server.dao.alarm.AlarmService;
 import org.thingsboard.server.dao.asset.AssetService;
 import org.thingsboard.server.dao.attributes.AttributesService;
+import org.thingsboard.server.dao.audit.AuditLogService;
 import org.thingsboard.server.dao.customer.CustomerService;
 import org.thingsboard.server.dao.device.DeviceService;
 import org.thingsboard.server.dao.event.EventService;
 import org.thingsboard.server.dao.plugin.PluginService;
+import org.thingsboard.server.dao.relation.RelationService;
 import org.thingsboard.server.dao.rule.RuleService;
 import org.thingsboard.server.dao.tenant.TenantService;
 import org.thingsboard.server.dao.timeseries.TimeseriesService;
@@ -108,6 +110,12 @@ public class ActorSystemContext {
 
     @Autowired
     @Getter private AlarmService alarmService;
+
+    @Autowired
+    @Getter private RelationService relationService;
+
+    @Autowired
+    @Getter private AuditLogService auditLogService;
 
     @Autowired
     @Getter @Setter private PluginWebSocketMsgEndpoint wsMsgEndpoint;

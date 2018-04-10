@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2018 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,9 @@
  */
 package org.thingsboard.server.actors.rule;
 
-import java.util.*;
-
+import akka.actor.ActorContext;
+import akka.actor.ActorRef;
+import akka.event.LoggingAdapter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.springframework.util.StringUtils;
 import org.thingsboard.server.actors.ActorSystemContext;
@@ -29,23 +30,17 @@ import org.thingsboard.server.common.data.plugin.ComponentLifecycleState;
 import org.thingsboard.server.common.data.plugin.PluginMetaData;
 import org.thingsboard.server.common.data.rule.RuleMetaData;
 import org.thingsboard.server.common.msg.cluster.ClusterEventMsg;
-import org.thingsboard.server.common.msg.core.BasicRequest;
 import org.thingsboard.server.common.msg.core.BasicStatusCodeResponse;
 import org.thingsboard.server.common.msg.core.RuleEngineError;
 import org.thingsboard.server.common.msg.device.ToDeviceActorMsg;
-import org.thingsboard.server.common.msg.session.MsgType;
 import org.thingsboard.server.common.msg.session.ToDeviceMsg;
-import org.thingsboard.server.common.msg.session.ex.ProcessingTimeoutException;
-import org.thingsboard.server.extensions.api.rules.*;
 import org.thingsboard.server.extensions.api.plugins.PluginAction;
 import org.thingsboard.server.extensions.api.plugins.msg.PluginToRuleMsg;
+import org.thingsboard.server.extensions.api.plugins.msg.ResponsePluginToRuleMsg;
 import org.thingsboard.server.extensions.api.plugins.msg.RuleToPluginMsg;
+import org.thingsboard.server.extensions.api.rules.*;
 
-import com.fasterxml.jackson.databind.JsonNode;
-
-import akka.actor.ActorContext;
-import akka.actor.ActorRef;
-import akka.event.LoggingAdapter;
+import java.util.*;
 
 class RuleActorMessageProcessor extends ComponentMsgProcessor<RuleId> {
 
@@ -170,7 +165,7 @@ class RuleActorMessageProcessor extends ComponentMsgProcessor<RuleId> {
             Optional<RuleToPluginMsg<?>> ruleToPluginMsgOptional = action.convert(ruleCtx, inMsg, inMsgMd);
             if (ruleToPluginMsgOptional.isPresent()) {
                 RuleToPluginMsg<?> ruleToPluginMsg = ruleToPluginMsgOptional.get();
-                logger.debug("[{}] Device msg is converter to: {}", entityId, ruleToPluginMsg);
+                logger.debug("[{}] Device msg is converted to: {}", entityId, ruleToPluginMsg);
                 context.parent().tell(new RuleToPluginMsgWrapper(pluginTenantId, pluginId, tenantId, entityId, ruleToPluginMsg), context.self());
                 if (action.isOneWayAction()) {
                     pushToNextRule(context, msg.getCtx(), RuleEngineError.NO_TWO_WAY_ACTIONS);
@@ -190,16 +185,30 @@ class RuleActorMessageProcessor extends ComponentMsgProcessor<RuleId> {
         RuleProcessingMsg pendingMsg = pendingMsgMap.remove(msg.getUid());
         if (pendingMsg != null) {
             ChainProcessingContext ctx = pendingMsg.getCtx();
-            Optional<ToDeviceMsg> ruleResponseOptional = action.convert(msg);
-            if (ruleResponseOptional.isPresent()) {
-                ctx.mergeResponse(ruleResponseOptional.get());
-                pushToNextRule(context, ctx, null);
-            } else {
+            if (isErrorResponce(msg)) {
                 pushToNextRule(context, ctx, RuleEngineError.NO_RESPONSE_FROM_ACTIONS);
+            } else {
+                Optional<ToDeviceMsg> ruleResponseOptional = action.convert(msg);
+                if (ruleResponseOptional.isPresent()) {
+                    ctx.mergeResponse(ruleResponseOptional.get());
+                    pushToNextRule(context, ctx, null);
+                } else {
+                    pushToNextRule(context, ctx, RuleEngineError.NO_RESPONSE_FROM_ACTIONS);
+                }
             }
         } else {
             logger.warning("[{}] Processing timeout detected: [{}]", entityId, msg.getUid());
         }
+    }
+
+    private boolean isErrorResponce(PluginToRuleMsg<?> msg) {
+        if (msg instanceof ResponsePluginToRuleMsg) {
+            if (((ResponsePluginToRuleMsg) msg).getPayload() instanceof BasicStatusCodeResponse) {
+                BasicStatusCodeResponse responce = (BasicStatusCodeResponse) ((ResponsePluginToRuleMsg) msg).getPayload();
+                return !responce.isSuccess();
+            }
+        }
+        return false;
     }
 
     void onTimeoutMsg(ActorContext context, RuleToPluginTimeoutMsg msg) {
@@ -322,7 +331,7 @@ class RuleActorMessageProcessor extends ComponentMsgProcessor<RuleId> {
 
     @Override
     public void onClusterEventMsg(ClusterEventMsg msg) throws Exception {
-
+        //Do nothing
     }
 
     private void stopAction() {

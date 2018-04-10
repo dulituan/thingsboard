@@ -1,5 +1,5 @@
 /*
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2018 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ export default angular.module('thingsboard.api.telemetryWebsocket', [thingsboard
 const RECONNECT_INTERVAL = 2000;
 const WS_IDLE_TIMEOUT = 90000;
 
+const MAX_PUBLISH_COMMANDS = 10;
+
 /*@ngInject*/
 function TelemetryWebsocketService($rootScope, $websocket, $timeout, $window, types, userService) {
 
@@ -34,6 +36,7 @@ function TelemetryWebsocketService($rootScope, $websocket, $timeout, $window, ty
         lastCmdId = 0,
         subscribers = {},
         subscribersCount = 0,
+        commands = {},
         cmdsWrapper = {
             tsSubCmds: [],
             historyCmds: [],
@@ -74,17 +77,38 @@ function TelemetryWebsocketService($rootScope, $websocket, $timeout, $window, ty
     return service;
 
     function publishCommands () {
-        if (isOpened && (cmdsWrapper.tsSubCmds.length > 0 ||
-            cmdsWrapper.historyCmds.length > 0 ||
-            cmdsWrapper.attrSubCmds.length > 0)) {
-            dataStream.send(angular.copy(cmdsWrapper)).then(function () {
+        while(isOpened && hasCommands()) {
+            dataStream.send(preparePublishCommands()).then(function () {
                 checkToClose();
             });
-            cmdsWrapper.tsSubCmds = [];
-            cmdsWrapper.historyCmds = [];
-            cmdsWrapper.attrSubCmds = [];
         }
         tryOpenSocket();
+    }
+
+    function hasCommands() {
+        return cmdsWrapper.tsSubCmds.length > 0 ||
+            cmdsWrapper.historyCmds.length > 0 ||
+            cmdsWrapper.attrSubCmds.length > 0;
+    }
+
+    function preparePublishCommands() {
+        var preparedWrapper = {};
+        var leftCount = MAX_PUBLISH_COMMANDS;
+        preparedWrapper.tsSubCmds = popCmds(cmdsWrapper.tsSubCmds, leftCount);
+        leftCount -= preparedWrapper.tsSubCmds.length;
+        preparedWrapper.historyCmds = popCmds(cmdsWrapper.historyCmds, leftCount);
+        leftCount -= preparedWrapper.historyCmds.length;
+        preparedWrapper.attrSubCmds = popCmds(cmdsWrapper.attrSubCmds, leftCount);
+        return preparedWrapper;
+    }
+
+    function popCmds(cmds, leftCount) {
+        var toPublish = Math.min(cmds.length, leftCount);
+        if (toPublish > 0) {
+            return cmds.splice(0, toPublish);
+        } else {
+            return [];
+        }
     }
 
     function onError (/*message*/) {
@@ -120,7 +144,10 @@ function TelemetryWebsocketService($rootScope, $websocket, $timeout, $window, ty
             if (!isReconnect) {
                 reconnectSubscribers = [];
                 for (var id in subscribers) {
-                    reconnectSubscribers.push(subscribers[id]);
+                    var subscriber = subscribers[id];
+                    if (reconnectSubscribers.indexOf(subscriber) === -1) {
+                        reconnectSubscribers.push(subscriber);
+                    }
                 }
                 reset(false);
                 isReconnect = true;
@@ -138,7 +165,7 @@ function TelemetryWebsocketService($rootScope, $websocket, $timeout, $window, ty
             if (data.subscriptionId) {
                 var subscriber = subscribers[data.subscriptionId];
                 if (subscriber && data) {
-                    var keys = fetchKeys(subscriber);
+                    var keys = fetchKeys(data.subscriptionId);
                     if (!data.data) {
                         data.data = {};
                     }
@@ -148,20 +175,15 @@ function TelemetryWebsocketService($rootScope, $websocket, $timeout, $window, ty
                             data.data[key] = [];
                         }
                     }
-                    subscriber.onData(data);
+                    subscriber.onData(data, data.subscriptionId);
                 }
             }
         }
         checkToClose();
     }
 
-    function fetchKeys(subscriber) {
-        var command;
-        if (angular.isDefined(subscriber.subscriptionCommand)) {
-            command = subscriber.subscriptionCommand;
-        } else {
-            command = subscriber.historyCommand;
-        }
+    function fetchKeys(subscriptionId) {
+        var command = commands[subscriptionId];
         if (command && command.keys && command.keys.length > 0) {
             return command.keys.split(",");
         } else {
@@ -176,41 +198,77 @@ function TelemetryWebsocketService($rootScope, $websocket, $timeout, $window, ty
 
     function subscribe (subscriber) {
         isActive = true;
-        var cmdId = nextCmdId();
-        subscribers[cmdId] = subscriber;
-        subscribersCount++;
-        if (angular.isDefined(subscriber.subscriptionCommand)) {
-            subscriber.subscriptionCommand.cmdId = cmdId;
-            if (subscriber.type === types.dataKeyType.timeseries) {
-                cmdsWrapper.tsSubCmds.push(subscriber.subscriptionCommand);
-            } else if (subscriber.type === types.dataKeyType.attribute) {
-                cmdsWrapper.attrSubCmds.push(subscriber.subscriptionCommand);
+        var cmdId;
+        if (angular.isDefined(subscriber.subscriptionCommands)) {
+            for (var i=0;i<subscriber.subscriptionCommands.length;i++) {
+                var subscriptionCommand = subscriber.subscriptionCommands[i];
+                cmdId = nextCmdId();
+                subscribers[cmdId] = subscriber;
+                subscriptionCommand.cmdId = cmdId;
+                commands[cmdId] = subscriptionCommand;
+                if (subscriber.type === types.dataKeyType.timeseries) {
+                    cmdsWrapper.tsSubCmds.push(subscriptionCommand);
+                } else if (subscriber.type === types.dataKeyType.attribute) {
+                    cmdsWrapper.attrSubCmds.push(subscriptionCommand);
+                }
             }
-        } else if (angular.isDefined(subscriber.historyCommand)) {
-            subscriber.historyCommand.cmdId = cmdId;
-            cmdsWrapper.historyCmds.push(subscriber.historyCommand);
         }
+        if (angular.isDefined(subscriber.historyCommands)) {
+            for (i=0;i<subscriber.historyCommands.length;i++) {
+                var historyCommand = subscriber.historyCommands[i];
+                cmdId = nextCmdId();
+                subscribers[cmdId] = subscriber;
+                historyCommand.cmdId = cmdId;
+                commands[cmdId] = historyCommand;
+                cmdsWrapper.historyCmds.push(historyCommand);
+            }
+        }
+        subscribersCount++;
         publishCommands();
     }
 
     function unsubscribe (subscriber) {
         if (isActive) {
             var cmdId = null;
-            if (subscriber.subscriptionCommand) {
-                subscriber.subscriptionCommand.unsubscribe = true;
-                if (subscriber.type === types.dataKeyType.timeseries) {
-                    cmdsWrapper.tsSubCmds.push(subscriber.subscriptionCommand);
-                } else if (subscriber.type === types.dataKeyType.attribute) {
-                    cmdsWrapper.attrSubCmds.push(subscriber.subscriptionCommand);
+            if (subscriber.subscriptionCommands) {
+                for (var i=0;i<subscriber.subscriptionCommands.length;i++) {
+                    var subscriptionCommand = subscriber.subscriptionCommands[i];
+                    subscriptionCommand.unsubscribe = true;
+                    if (subscriber.type === types.dataKeyType.timeseries) {
+                        cmdsWrapper.tsSubCmds.push(subscriptionCommand);
+                    } else if (subscriber.type === types.dataKeyType.attribute) {
+                        cmdsWrapper.attrSubCmds.push(subscriptionCommand);
+                    }
+                    cmdId = subscriptionCommand.cmdId;
+                    if (cmdId) {
+                        if (subscribers[cmdId]) {
+                            delete subscribers[cmdId];
+                        }
+                        if (commands[cmdId]) {
+                            delete commands[cmdId];
+                        }
+                    }
                 }
-                cmdId = subscriber.subscriptionCommand.cmdId;
-            } else if (subscriber.historyCommand) {
-                cmdId = subscriber.historyCommand.cmdId;
             }
-            if (cmdId && subscribers[cmdId]) {
-                delete subscribers[cmdId];
-                subscribersCount--;
+            if (subscriber.historyCommands) {
+                for (i=0;i<subscriber.historyCommands.length;i++) {
+                    var historyCommand = subscriber.historyCommands[i];
+                    cmdId = historyCommand.cmdId;
+                    if (cmdId) {
+                        if (subscribers[cmdId]) {
+                            delete subscribers[cmdId];
+                        }
+                        if (commands[cmdId]) {
+                            delete commands[cmdId];
+                        }
+                    }
+                }
             }
+            var index = reconnectSubscribers.indexOf(subscriber);
+            if (index > -1) {
+                reconnectSubscribers.splice(index, 1);
+            }
+            subscribersCount--;
             publishCommands();
         }
     }
@@ -268,6 +326,7 @@ function TelemetryWebsocketService($rootScope, $websocket, $timeout, $window, ty
         lastCmdId = 0;
         subscribers = {};
         subscribersCount = 0;
+        commands = {};
         cmdsWrapper.tsSubCmds = [];
         cmdsWrapper.historyCmds = [];
         cmdsWrapper.attrSubCmds = [];

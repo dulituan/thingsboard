@@ -1,5 +1,5 @@
 /*
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2018 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 /* eslint-disable import/no-unresolved, import/default */
 
 import defaultStateControllerTemplate from './default-state-controller.tpl.html';
@@ -40,7 +39,10 @@ export default function StatesControllerService() {
     var service = {
         registerStatesController: registerStatesController,
         getStateControllers: getStateControllers,
-        getStateController: getStateController
+        getStateController: getStateController,
+        preserveStateControllerState: preserveStateControllerState,
+        withdrawStateControllerState: withdrawStateControllerState,
+        cleanupPreservedStates: cleanupPreservedStates
     };
 
     return service;
@@ -55,6 +57,22 @@ export default function StatesControllerService() {
 
     function getStateController(id) {
         return statesControllers[id];
+    }
+
+    function preserveStateControllerState(id, state) {
+        statesControllers[id].state = angular.copy(state);
+    }
+
+    function withdrawStateControllerState(id) {
+        var state = statesControllers[id].state;
+        statesControllers[id].state = null;
+        return state;
+    }
+
+    function cleanupPreservedStates() {
+        for (var id in statesControllers) {
+            statesControllers[id].state = null;
+        }
     }
 
 }

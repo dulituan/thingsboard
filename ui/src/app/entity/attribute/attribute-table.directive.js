@@ -1,5 +1,5 @@
 /*
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2018 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ import AliasController from '../../api/alias-controller';
 /*@ngInject*/
 export default function AttributeTableDirective($compile, $templateCache, $rootScope, $q, $mdEditDialog, $mdDialog,
                                                 $mdUtil, $document, $translate, $filter, utils, types, dashboardUtils,
-                                                dashboardService, entityService, attributeService, widgetService) {
+                                                entityService, attributeService, widgetService) {
 
     var linker = function (scope, element, attrs) {
 
@@ -405,10 +405,6 @@ export default function AttributeTableDirective($compile, $templateCache, $rootS
             scope.selectedWidgetsBundleAlias = null;
             scope.mode = 'default';
             scope.getEntityAttributes(true);
-        }
-
-        scope.getServerTimeDiff = function() {
-            return dashboardService.getServerTimeDiff();
         }
 
         scope.addWidgetToDashboard = function($event) {

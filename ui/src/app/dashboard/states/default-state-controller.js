@@ -1,5 +1,5 @@
 /*
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2018 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,18 +13,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import './default-state-controller.scss';
 
 /*@ngInject*/
-export default function DefaultStateController($scope, $location, $state, $stateParams, utils, types, dashboardUtils) {
+export default function DefaultStateController($scope, $timeout, $location, $state,
+                                               $stateParams, utils, types, dashboardUtils, preservedState) {
 
     var vm = this;
 
     vm.inited = false;
 
+    vm.skipStateChange = false;
+
     vm.openState = openState;
     vm.updateState = updateState;
+    vm.resetState = resetState;
+    vm.getStateObject = getStateObject;
     vm.navigatePrevState = navigatePrevState;
     vm.getStateId = getStateId;
+    vm.getStateIndex = getStateIndex;
+    vm.getStateIdAtIndex = getStateIdAtIndex;
     vm.getStateParams = getStateParams;
     vm.getStateParamsByStateId = getStateParamsByStateId;
     vm.getEntityId = getEntityId;
@@ -43,10 +51,9 @@ export default function DefaultStateController($scope, $location, $state, $state
                 params: params
             }
             //append new state
-            stopWatchStateObject();
             vm.stateObject[0] = newState;
             gotoState(vm.stateObject[0].id, true, openRightLayout);
-            watchStateObject();
+            vm.skipStateChange = true;
         }
     }
 
@@ -63,25 +70,49 @@ export default function DefaultStateController($scope, $location, $state, $state
                 params: params
             }
             //replace with new state
-            stopWatchStateObject();
             vm.stateObject[0] = newState;
             gotoState(vm.stateObject[0].id, true, openRightLayout);
-            watchStateObject();
+            vm.skipStateChange = true;
         }
+    }
+
+    function resetState() {
+        var rootStateId = dashboardUtils.getRootStateId(vm.states);
+        vm.stateObject = [ { id: rootStateId, params: {} } ];
+        gotoState(rootStateId, true);
+    }
+
+    function getStateObject() {
+        return vm.stateObject;
     }
 
     function navigatePrevState(index) {
         if (index < vm.stateObject.length-1) {
-            stopWatchStateObject();
             vm.stateObject.splice(index+1, vm.stateObject.length-index-1);
             gotoState(vm.stateObject[vm.stateObject.length-1].id, true);
-            watchStateObject();
+            vm.skipStateChange = true;
         }
     }
 
     function getStateId() {
         if (vm.stateObject && vm.stateObject.length) {
             return vm.stateObject[vm.stateObject.length-1].id;
+        } else {
+            return '';
+        }
+    }
+
+    function getStateIndex() {
+        if (vm.stateObject && vm.stateObject.length) {
+            return vm.stateObject.length-1;
+        } else {
+            return -1;
+        }
+    }
+
+    function getStateIdAtIndex(index) {
+        if (vm.stateObject && vm.stateObject[index]) {
+            return vm.stateObject[index].id;
         } else {
             return '';
         }
@@ -141,8 +172,18 @@ export default function DefaultStateController($scope, $location, $state, $state
             result = newResult;
         }
 
+        var rootStateId = dashboardUtils.getRootStateId(vm.states);
         if (!result[0].id) {
-            result[0].id = dashboardUtils.getRootStateId(vm.states);
+            result[0].id = rootStateId;
+        }
+        if (!vm.states[result[0].id]) {
+            result[0].id = rootStateId;
+        }
+        var i = result.length;
+        while (i--) {
+            if (!result[i].id || !vm.states[result[i].id]) {
+                result.splice(i, 1);
+            }
         }
         return result;
     }
@@ -161,42 +202,40 @@ export default function DefaultStateController($scope, $location, $state, $state
     }
 
     function init() {
-        var initialState = $stateParams.state;
-        vm.stateObject = parseState(initialState);
-
-        gotoState(vm.stateObject[0].id, false);
-
-        $scope.$watchCollection(function(){
-            return $state.params;
-        }, function(){
-            var currentState = $state.params.state;
-            vm.stateObject = parseState(currentState);
-        });
-
-        $scope.$watch('vm.dashboardCtrl.dashboardCtx.state', function() {
-            if (vm.stateObject[0].id !== vm.dashboardCtrl.dashboardCtx.state) {
-                stopWatchStateObject();
-                vm.stateObject[0].id = vm.dashboardCtrl.dashboardCtx.state;
-                updateLocation();
-                watchStateObject();
-            }
-        });
-        watchStateObject();
-    }
-
-    function stopWatchStateObject() {
-        if (vm.stateObjectWatcher) {
-            vm.stateObjectWatcher();
-            vm.stateObjectWatcher = null;
+        if (preservedState) {
+            vm.stateObject = preservedState;
+            gotoState(vm.stateObject[0].id, true);
+        } else {
+            var initialState = $stateParams.state;
+            vm.stateObject = parseState(initialState);
+            gotoState(vm.stateObject[0].id, false);
         }
-    }
 
-    function watchStateObject() {
-        vm.stateObjectWatcher = $scope.$watch('vm.stateObject', function(newVal, prevVal) {
-            if (!angular.equals(newVal, prevVal) && newVal) {
-                gotoState(vm.stateObject[0].id, true);
-            }
-        }, true);
+        $timeout(() => {
+            $scope.$watchCollection(function () {
+                return $state.params;
+            }, function () {
+                var currentState = $state.params.state;
+                vm.stateObject = parseState(currentState);
+            });
+
+            $scope.$watch('vm.dashboardCtrl.dashboardCtx.state', function () {
+                if (vm.stateObject[0].id !== vm.dashboardCtrl.dashboardCtx.state) {
+                    vm.stateObject[0].id = vm.dashboardCtrl.dashboardCtx.state;
+                    updateLocation();
+                    vm.skipStateChange = true;
+                }
+            });
+            $scope.$watch('vm.stateObject', function(newVal, prevVal) {
+                if (!angular.equals(newVal, prevVal) && newVal) {
+                    if (vm.skipStateChange) {
+                        vm.skipStateChange = false;
+                    } else {
+                        gotoState(vm.stateObject[0].id, true);
+                    }
+                }
+            }, true);
+        });
     }
 
     function gotoState(stateId, update, openRightLayout) {
