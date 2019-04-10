@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2018 The Thingsboard Authors
+ * Copyright © 2016-2019 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,8 +69,7 @@ public class TbCreateAlarmNode extends TbAbstractAlarmNode<TbCreateAlarmNodeConf
             msgAlarm = null;
         } else {
             try {
-                msgAlarm = mapper.readValue(msg.getData(), Alarm.class);
-                msgAlarm.setTenantId(ctx.getTenantId());
+                msgAlarm = getAlarmFromMessage(ctx, msg);
                 alarmType = msgAlarm.getType();
             } catch (IOException e) {
                 ctx.tellFailure(msg, e);
@@ -87,6 +86,19 @@ public class TbCreateAlarmNode extends TbAbstractAlarmNode<TbCreateAlarmNodeConf
             }
         }, ctx.getDbCallbackExecutor());
 
+    }
+
+    private Alarm getAlarmFromMessage(TbContext ctx, TbMsg msg) throws IOException {
+        Alarm msgAlarm;
+        msgAlarm = mapper.readValue(msg.getData(), Alarm.class);
+        msgAlarm.setTenantId(ctx.getTenantId());
+        if (msgAlarm.getOriginator() == null) {
+            msgAlarm.setOriginator(msg.getOriginator());
+        }
+        if (msgAlarm.getStatus() == null) {
+            msgAlarm.setStatus(AlarmStatus.ACTIVE_UNACK);
+        }
+        return msgAlarm;
     }
 
     private ListenableFuture<AlarmResult> createNewAlarm(TbContext ctx, TbMsg msg, Alarm msgAlarm) {

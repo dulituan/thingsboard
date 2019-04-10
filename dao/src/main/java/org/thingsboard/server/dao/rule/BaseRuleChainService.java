@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2018 The Thingsboard Authors
+ * Copyright © 2016-2019 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -288,6 +288,20 @@ public class BaseRuleChainService extends AbstractEntityService implements RuleC
     }
 
     @Override
+    public List<RuleNode> getReferencingRuleChainNodes(TenantId tenantId, RuleChainId ruleChainId) {
+        Validator.validateId(ruleChainId, "Incorrect rule chain id for search request.");
+        List<EntityRelation> relations = getNodeToRuleChainRelations(tenantId, ruleChainId);
+        List<RuleNode> ruleNodes = new ArrayList<>();
+        for (EntityRelation relation : relations) {
+            RuleNode ruleNode = ruleNodeDao.findById(tenantId, relation.getFrom().getId());
+            if (ruleNode != null) {
+                ruleNodes.add(ruleNode);
+            }
+        }
+        return ruleNodes;
+    }
+
+    @Override
     public List<EntityRelation> getRuleNodeRelations(TenantId tenantId, RuleNodeId ruleNodeId) {
         Validator.validateId(ruleNodeId, "Incorrect rule node id for search request.");
         List<EntityRelation> relations = relationService.findByFrom(tenantId, ruleNodeId, RelationTypeGroup.RULE_NODE);
@@ -349,6 +363,10 @@ public class BaseRuleChainService extends AbstractEntityService implements RuleC
 
     private List<EntityRelation> getRuleChainToNodeRelations(TenantId tenantId, RuleChainId ruleChainId) {
         return relationService.findByFrom(tenantId, ruleChainId, RelationTypeGroup.RULE_CHAIN);
+    }
+
+    private List<EntityRelation> getNodeToRuleChainRelations(TenantId tenantId, RuleChainId ruleChainId) {
+        return relationService.findByTo(tenantId, ruleChainId, RelationTypeGroup.RULE_NODE);
     }
 
     private void deleteRuleNode(TenantId tenantId, EntityId entityId) {
